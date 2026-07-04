@@ -1,30 +1,40 @@
 import os
-import sys
-from pathlib import Path
-
-# Explicitly add the project root to the Python path for Vercel
-root_dir = Path(__file__).resolve().parent.parent
-if str(root_dir) not in sys.path:
-    sys.path.insert(0, str(root_dir))
-    
-from dotenv import load_dotenv
-load_dotenv()
-from fastapi import FastAPI
-from app.api.routes import router as chat_router
-from app.frontend.routes import router as frontend_router
+import traceback
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-app = FastAPI(
-    title="WebQuery AI",
-    version="1.0.0"
-)
-app.mount(
-    "/static",
-    StaticFiles(directory="app/frontend/static"),
-    name="static"
-)
-app.include_router(frontend_router)
-app.include_router(chat_router)
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse, JSONResponse
+from app.api.routes import router as api_router
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=7860, reload=False)
+app = FastAPI(title="WebQuery AI Chatbot")
+
+# 1. Global Exception Handler to catch any hidden issues
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print("--- CRITICAL RUNTIME ERROR ---")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"message": "Internal Server Error", "details": str(exc)}
+    )
+
+# 2. Include backend API routes
+app.include_router(api_router, prefix="/api")
+
+# 3. Setup absolute path variables
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATIC_DIR = os.path.join(BASE_DIR, "app", "frontend", "static")
+TEMPLATES_DIR = os.path.join(BASE_DIR, "app", "frontend", "templates")
+
+# 4. Mount static assets
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
+
+# 5. Serve homepage using modern explicitly named keyword arguments
+@app.get("/", response_class=HTMLResponse)
+async def serve_homepage(request: Request):
+    # CRITICAL FIX: Passing request as a distinct keyword parameter prevents the unhashable dict error
+    return templates.TemplateResponse(
+        request=request, 
+        name="index.html"
+    )

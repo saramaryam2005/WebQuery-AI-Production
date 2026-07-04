@@ -1,68 +1,41 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>WebQuery AI</title>
-
+    <title>🤖 WebQuery AI Chatbot</title>
     <link rel="stylesheet" href="/static/css/style.css">
-
 </head>
-
 <body>
 
-    <div class="chat-container">
-
-        <header class="chat-header">
-
-            <h1>🤖 WebQuery AI</h1>
-
-            <p>AI Assistant for WebKey India</p>
-
-        </header>
-
-
-        <main id="chat-box" class="chat-box">
-
-            <div class="message bot-message">
-
-    <div class="message-content">
-
-        <p>
-            👋 Hello! I'm the AI Assistant for WebKey India.
-            Ask me anything about our services, technologies,
-            pricing, or company.
-        </p>
-
-    </div>
-
-</div>
-
-        </main>
-
-
-        <footer class="chat-input">
-
-            <input
-                id="user-input"
-                type="text"
-                placeholder="Type your message..."
-            >
-
-            <button id="send-btn">
-                Send
+    <div class="app-container">
+        <aside class="sidebar">
+            <button class="new-chat-btn" onclick="createNewChat()">
+                <span>💬</span> New Chat
             </button>
+            <div class="history-section">
+                <h3>📜 Recent Chats</h3>
+                <ul id="chat-history-list" class="history-list"></ul>
+            </div>
+        </aside>
 
-        </footer>
-
+        <main class="chat-area">
+            <header class="chat-header">
+                <h2>🤖 WebQuery AI — WebKey India Assistant</h2>
+            </header>
+            
+            <div id="chat-box" class="chat-box">
+                </div>
+            
+            <footer class="chat-input-area">
+                <div class="input-wrapper">
+                    <input type="text" id="user-input" placeholder="Ask about WebKey India..." onkeydown="if(event.key === 'Enter') sendMessage()">
+                    <button id="send-btn" onclick="sendMessage()">Send 🚀</button>
+                </div>
+            </footer>
+        </main>
     </div>
 
-    
     <script src="/static/js/script.js"></script>
-
 </body>
-
 </html>
