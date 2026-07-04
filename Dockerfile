@@ -4,7 +4,7 @@ WORKDIR /code
 
 COPY ./requirements.txt /code/requirements.txt
 
-RUN pip install --no-cache-dir --upgrade -r /code/requirements.txthttp://googleusercontent.com/image_generation_content/0
+RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
 COPY . .
 
