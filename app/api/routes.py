@@ -16,12 +16,26 @@ else:
     PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
     DB_PATH = os.path.normpath(os.path.join(PROJECT_ROOT, "chatbot.db"))
 
+# Create a global connection placeholder right above the function
+_hf_memory_conn = None
+
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH, timeout=10.0)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA synchronous = EXTRA;")
-    conn.execute("PRAGMA journal_mode = DELETE;")
-    return conn
+    global _hf_memory_conn
+    
+    # Check if running on Hugging Face cloud
+    if os.environ.get("RUNNING_ON_HF") == "true" or os.environ.get("RUNNING_ON_HF") == "1":
+        if _hf_memory_conn is None:
+            # Create a shared in-memory database that stays alive in RAM while the app runs
+            _hf_memory_conn = sqlite3.connect("file:hf_shared_mem_db?mode=memory&cache=shared", uri=True, timeout=10.0)
+            _hf_memory_conn.row_factory = sqlite3.Row
+        return _hf_memory_conn
+    else:
+        # Standard local disk setup for running flawlessly on your laptop
+        conn = sqlite3.connect(DB_PATH, timeout=10.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA synchronous = EXTRA;")
+        conn.execute("PRAGMA journal_mode = DELETE;")
+        return conn
 
 def init_db():
     conn = get_db_connection()
@@ -46,7 +60,11 @@ def init_db():
         )
     """)
     conn.commit()
-    conn.close()
+    
+    # ONLY close the connection if running locally. Keep it open for Hugging Face RAM!
+    if not (os.environ.get("RUNNING_ON_HF") == "true" or os.environ.get("RUNNING_ON_HF") == "1"):
+        conn.close()
+     
 
 init_db()
 
