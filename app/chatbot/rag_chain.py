@@ -1,16 +1,11 @@
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
-
+from google import genai
 from app.chatbot.retriever import retriever
 from app.config import GEMINI_API_KEY
 
+# Initialize the official native Google Client directly
+client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Pass the imported GEMINI_API_KEY directly into the constructor parameter
-llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",
-    temperature=0.7,
-    google_api_key=GEMINI_API_KEY
-)
 prompt = ChatPromptTemplate.from_template(
     """
 You are an AI assistant for **WebKey India**.
@@ -69,32 +64,32 @@ Your primary purpose is to answer questions about WebKey India using **only the 
 {question}
 
 ## Answer
-
-
 """
 )
 
 def ask_question(question: str):
-
     documents = retriever.invoke(question)
 
     context = ""
-
     for doc in documents:
-
         context += (
             f"Title: {doc.metadata.get('title')}\n"
             f"URL: {doc.metadata.get('url')}\n\n"
             f"{doc.page_content}\n\n"
-        "---------------------------------\n\n"
-    )
+            "---------------------------------\n\n"
+        )
 
     final_prompt = prompt.format(
         context=context,
         question=question
     )
 
-    response = llm.invoke(final_prompt)
+    # Use the native client generation endpoint to bypass legacy routing entirely
+    response = client.models.generate_content(
+        model='gemini-1.5-flash',
+        contents=final_prompt,
+    )
+    
     sources = []
     seen = set()
     for doc in documents:
@@ -104,6 +99,6 @@ def ask_question(question: str):
             sources.append(url)
 
     return {
-    "answer": response.content,
-    "sources": sources
-}
+        "answer": response.text,  # Clean text output from native SDK
+        "sources": sources
+    }
