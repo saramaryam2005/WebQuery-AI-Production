@@ -24,6 +24,7 @@ langchain_pinecone
 # -------------------------
 google-generativeai
 langchain-google-genai
+google-genai
 
 # -------------------------
 # Vector Database
