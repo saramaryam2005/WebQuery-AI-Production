@@ -3,47 +3,10 @@ from google import genai
 from app.chatbot.retriever import retriever
 from app.config import GEMINI_API_KEY
 
-# Initialize the official native Google Client directly
-# 1. Keep the client initialization clean and simple near the top
+# 1. Initialize the official native Google Client
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ... (keep your prompt and context extraction code exactly as they are) ...
-
-def ask_question(question: str):
-    documents = retriever.invoke(question)
-    context = ""
-    for doc in documents:
-        context += (
-            f"Title: {doc.metadata.get('title')}\n"
-            f"URL: {doc.metadata.get('url')}\n\n"
-            f"{doc.page_content}\n\n"
-            "---------------------------------\n\n"
-        )
-
-    final_prompt = prompt.format(
-        context=context,
-        question=question
-    )
-
-    # 2. CHANGE THE MODEL TARGET TO THE ACTIVE 2.5 ENGINE HERE:
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',  # <-- UPDATED TO THE ACTIVE MODEL
-        contents=final_prompt,
-    )
-    
-    sources = []
-    seen = set()
-    for doc in documents:
-        url = doc.metadata.get("url")
-        if url not in seen:
-            seen.add(url)
-            sources.append(url)
-
-    return {
-        "answer": response.text,
-        "sources": sources
-    }
-
+# 2. Define the prompt template clearly
 prompt = ChatPromptTemplate.from_template(
     """
 You are an AI assistant for **WebKey India**.
@@ -105,6 +68,7 @@ Your primary purpose is to answer questions about WebKey India using **only the 
 """
 )
 
+# 3. The ONLY ask_question function definition in the file
 def ask_question(question: str):
     documents = retriever.invoke(question)
 
@@ -122,9 +86,9 @@ def ask_question(question: str):
         question=question
     )
 
-    # Use the native client generation endpoint to bypass legacy routing entirely
+    # Use the active production model engine
     response = client.models.generate_content(
-        model='gemini-1.5-flash',
+        model='gemini-2.5-flash',
         contents=final_prompt,
     )
     
@@ -137,6 +101,6 @@ def ask_question(question: str):
             sources.append(url)
 
     return {
-        "answer": response.text,  # Clean text output from native SDK
+        "answer": response.text,
         "sources": sources
     }
