@@ -8,5 +8,6 @@ RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
 COPY . /code
 RUN chmod -R 777 /code
+ENV GOOGLE_API_KEY=$GEMINI_API_KEY
 
 CMD ["python", "app/main.py"]
