@@ -4,7 +4,10 @@ from app.chatbot.retriever import retriever
 from app.config import GEMINI_API_KEY
 
 # Initialize the official native Google Client directly
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(
+    api_key=GEMINI_API_KEY,
+    http_options={'api_version': 'v1'}
+)
 
 prompt = ChatPromptTemplate.from_template(
     """
