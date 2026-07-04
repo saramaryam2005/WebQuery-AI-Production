@@ -5,11 +5,11 @@ from fastapi import APIRouter, HTTPException, Cookie, Response
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 
-# FORCE MAPPING: Set environment states safely before core application blocks trigger
-if os.environ.get("GOOGLE_API_KEY"):
-    os.environ["GEMINI_API_KEY"] = os.environ.get("GOOGLE_API_KEY")
-elif os.environ.get("GEMINI_API_KEY"):
+# FORCE MAPPING: Prioritize GEMINI_API_KEY explicitly before loading the RAG chain architecture
+if os.environ.get("GEMINI_API_KEY"):
     os.environ["GOOGLE_API_KEY"] = os.environ.get("GEMINI_API_KEY")
+elif os.environ.get("GOOGLE_API_KEY"):
+    os.environ["GEMINI_API_KEY"] = os.environ.get("GOOGLE_API_KEY")
 
 from app.chatbot.rag_chain import ask_question
 
@@ -25,13 +25,12 @@ HEADERS = {
     "Prefer": "return=representation"
 }
 
-# 1. CLASS DEFINED FIRST (Fixes the NameError)
+# Class structure schema layout initialization
 class ChatRequest(BaseModel):
     session_id: str
     title: str
     question: str
 
-# 2. ENDPOINTS INTERFACES FOLLOW
 @router.get("/history")
 def get_user_history(user_id: Optional[str] = Cookie(None)):
     if not user_id or not SUPABASE_URL:
