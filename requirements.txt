@@ -50,3 +50,4 @@ sqlalchemy
 pydantic
 jinja2
 psycopg2-binary>=2.9.0
+requests>=2.31.0
