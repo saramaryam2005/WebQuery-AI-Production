@@ -7,10 +7,9 @@ from app.config import GEMINI_API_KEY
 
 # Pass the imported GEMINI_API_KEY directly into the constructor parameter
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",  # You can safely use flash again now!
+    model="gemini-1.5-flash",
     temperature=0.7,
-    google_api_key=GEMINI_API_KEY,
-    client_options={"api_version": "v1"}  # <-- ADD THIS LINE TO FORCE STABLE API
+    google_api_key=GEMINI_API_KEY
 )
 prompt = ChatPromptTemplate.from_template(
     """
