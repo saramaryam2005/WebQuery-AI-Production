@@ -1,4 +1,5 @@
-FROM python:3.9-slim
+# UPGRADED TO PYTHON 3.11
+FROM python:3.11-slim
 
 WORKDIR /code
 
@@ -8,5 +9,4 @@ RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 COPY . /code
 RUN chmod -R 777 /code
 
-# CHANGE THIS LAST LINE TO:
 CMD ["python", "app/main.py"]
