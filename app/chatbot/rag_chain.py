@@ -5,9 +5,12 @@ from app.chatbot.retriever import retriever
 from app.config import GEMINI_API_KEY
 
 
+# Pass the imported GEMINI_API_KEY directly into the constructor parameter
 llm = ChatGoogleGenerativeAI(
     model="gemini-1.5-flash",
-    temperature=0.7) 
+    temperature=0.7,
+    google_api_key=GEMINI_API_KEY  # <-- ADD THIS EXPLICIT PARAMETER HERE
+) 
 
 prompt = ChatPromptTemplate.from_template(
     """
