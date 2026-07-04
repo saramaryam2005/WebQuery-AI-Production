@@ -1,14 +1,16 @@
 from fastapi import APIRouter
-
-from app.api.models import ChatRequest, ChatResponse
+from pydantic import BaseModel
 from app.chatbot.rag_chain import ask_question
 
 router = APIRouter()
 
-@router.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest):
-    result = ask_question(request.question)
+# 1. Define the input structure matching the JavaScript body
+class ChatRequest(BaseModel):
+    question: str
 
-    return ChatResponse(
-        answer=result["answer"]
-    )
+# 2. Use the ChatRequest model in your POST endpoint
+@router.post("/chat")
+async def chat_endpoint(request: ChatRequest):
+    # Pass request.question into your RAG logic
+    result = ask_question(request.question)
+    return result
