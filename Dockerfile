@@ -2,14 +2,17 @@ FROM python:3.9-slim
 
 WORKDIR /code
 
+# Copy requirements first to take advantage of Docker caching
 COPY ./requirements.txt /code/requirements.txt
 
+# Install dependencies
 RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
-COPY . .
+# CRITICAL: Copy all remaining project files (including main.py and folders) into the container
+COPY . /code
 
-# Expose Hugging Face's default port 7860
-EXPOSE 7860
+# Set permissions so the container can access the files safely
+RUN chmod -R 777 /code
 
-# Adjust this line to point to the main file that starts your app
+# Command to run your application
 CMD ["python", "main.py"]
