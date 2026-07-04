@@ -1,40 +1,37 @@
 import os
-import traceback
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse
 from app.api.routes import router as api_router
 
 app = FastAPI(title="WebQuery AI Chatbot")
 
-# 1. Global Exception Handler to catch any hidden issues
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    print("--- CRITICAL RUNTIME ERROR ---")
-    traceback.print_exc()
-    return JSONResponse(
-        status_code=500,
-        content={"message": "Internal Server Error", "details": str(exc)}
-    )
+# 1. DYNAMICALLY RESOLVE ABSOLUTE FILE PATHS
+# This prevents Hugging Face from getting lost in nested directory structures
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__)) # points to 'app' folder
+STATIC_DIR = os.path.normpath(os.path.join(CURRENT_DIR, "frontend", "static"))
+TEMPLATE_DIR = os.path.normpath(os.path.join(CURRENT_DIR, "frontend", "templates"))
 
-# 2. Include backend API routes
+print("\n" + "="*60)
+print(f"📁 MOUNTING STATIC FILES FROM: {STATIC_DIR}")
+print(f"📄 SERVING index.html FROM: {TEMPLATE_DIR}")
+print("="*60 + "\n")
+
+# 2. MOUNT STATIC ASSETS (CSS, JS, Images)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# 3. INCLUDE DATABASE & CHAT ROUTES
 app.include_router(api_router, prefix="/api")
 
-# 3. Setup absolute path variables
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATIC_DIR = os.path.join(BASE_DIR, "app", "frontend", "static")
-TEMPLATES_DIR = os.path.join(BASE_DIR, "app", "frontend", "templates")
+# 4. SERVE FRONTEND INDEX PAGE
+@app.get("/")
+def read_root():
+    index_path = os.path.join(TEMPLATE_DIR, "index.html")
+    if not os.path.exists(index_path):
+        return {"error": f"index.html not found at target location: {index_path}"}
+    return FileResponse(index_path)
 
-# 4. Mount static assets
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-templates = Jinja2Templates(directory=TEMPLATES_DIR)
-
-# 5. Serve homepage using modern explicitly named keyword arguments
-@app.get("/", response_class=HTMLResponse)
-async def serve_homepage(request: Request):
-    # CRITICAL FIX: Passing request as a distinct keyword parameter prevents the unhashable dict error
-    return templates.TemplateResponse(
-        request=request, 
-        name="index.html"
-    )
+# Allows running directly via 'python app/main.py' if needed locally
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="127.0.0.1", port=7860, reload=True)
