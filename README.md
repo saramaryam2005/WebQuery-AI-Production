@@ -14,6 +14,12 @@ A Retrieval-Augmented Generation (RAG) chatbot that answers questions about a we
 
 The application scrapes website content, generates vector embeddings, stores them in ChromaDB, retrieves the most relevant information for a user query, and generates context-aware responses through a FastAPI backend.
 
+## 🚀 Live Demo
+Access the running application directly on Hugging Face Spaces:
+👉 **[WebQuery AI Chatbot Space](https://huggingface.co/spaces/saramaryam1226/Web_Query_AI_Chatbot)**
+
+---
+
 ![Chatbot UI](chatbot.png)
 
 ## Demo Video
@@ -23,10 +29,10 @@ The application scrapes website content, generates vector embeddings, stores the
 
 ## Features
 
-* Website scraping using Selenium
+* Website scraping using beautifulsoup4
 * Text cleaning and chunking
-* Semantic embeddings using Sentence Transformers
-* Vector storage with ChromaDB
+* Semantic Embeddings: Created using Google's text embedding models via LangChain.
+* Vector Storage: Securely stored and indexed in the cloud using a Pinecone vector database.
 * Retrieval-Augmented Generation (RAG)
 * Google Gemini integration
 * FastAPI REST API
@@ -41,31 +47,31 @@ The application scrapes website content, generates vector embeddings, stores the
                           └──────────┬──────────┘
                                      │
                                      ▼
-                          Selenium Web Scraper
+                          beautifulsoup4 Web Scraper
                                      │
                                      ▼
                          Text Cleaning & Chunking
                                      │
                                      ▼
-                     SentenceTransformer Embeddings
+                                Embeddings
                                      │
                                      ▼
-                                ChromaDB
+                             Pinecone Database
                                      ▲
                                      │
-                           Query Embedding
+                             Query Embedding
                                      ▲
                                      │
-                              User Question
+                             User Question
                                      │
                                      ▼
-                      Retrieve Relevant Chunks
+                            Retrieve Relevant Chunks
                                      │
                                      ▼
-                    Prompt + Retrieved Context
+                             Prompt + Retrieved Context
                                      │
                                      ▼
-                          Google Gemini LLM
+                             Google Gemini LLM
                                      │
                                      ▼
                               FastAPI Backend
@@ -83,9 +89,9 @@ The application scrapes website content, generates vector embeddings, stores the
 | Backend         | FastAPI, Python       |
 | Frontend        | HTML, CSS, JavaScript |
 | LLM             | Google Gemini         |
-| Vector Database | ChromaDB              |
-| Embeddings      | Sentence Transformers |
-| Web Scraping    | Selenium              |
+| Vector Database | pinecone              |
+| Embeddings      | langchain             |
+| Web Scraping    | beautifulsoup4        |
 | Data Validation | Pydantic              |
 
 ---
