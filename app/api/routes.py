@@ -131,6 +131,20 @@ def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[st
         if 'conn' in locals(): conn.close()
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/debug-files")
+def debug_files():
+    import os
+    files_structure = {}
+    for root, dirs, files in os.walk("."):
+        # Ignore virtual environments or hidden git folders to keep it clean
+        if "venv" in root or ".git" in root or "__pycache__" in root:
+            continue
+        files_structure[root] = files
+    return {
+        "current_working_dir": os.getcwd(),
+        "env_variables_keys": list(os.environ.keys()),
+        "directory_contents": files_structure
+    }
 @router.delete("/session/{session_id}")
 def delete_chat_session(session_id: str, user_id: Optional[str] = Cookie(None)):
     # Bypassing physical file deletion constraints on HF by simply returning success
