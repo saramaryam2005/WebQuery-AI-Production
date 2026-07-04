@@ -1,3 +1,13 @@
+---
+title: Web Query AI Chatbot
+emoji: 🤖
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # WebQuery AI
 
 A Retrieval-Augmented Generation (RAG) chatbot that answers questions about a website using semantic search and Google's Gemini model.
