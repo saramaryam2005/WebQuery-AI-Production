@@ -8,10 +8,13 @@ from app.chatbot.rag_chain import ask_question
 
 router = APIRouter()
 
-# Dynamically calculate path to the main folder
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__)) # app/api
-PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
-DB_PATH = os.path.normpath(os.path.join(PROJECT_ROOT, "chatbot.db"))
+# Dynamically check if running on Hugging Face cloud or locally
+if os.environ.get("RUNNING_ON_HF") or not os.access(".", os.W_OK):
+    DB_PATH = "/tmp/chatbot.db"
+else:
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+    DB_PATH = os.path.normpath(os.path.join(PROJECT_ROOT, "chatbot.db"))
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH, timeout=10.0)

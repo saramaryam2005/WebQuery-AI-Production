@@ -17,4 +17,5 @@ RUN mkdir -p /code/chroma_db && chmod -R 777 /code
 EXPOSE 7860
 
 # Run Uvicorn directly to launch your live FastAPI web app interface framework
+ENV RUNNING_ON_HF=true
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
