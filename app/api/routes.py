@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Cookie, Response
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 
-# Force load key configurations into system variables
+# FORCE MAPPING: Set environment states safely before core application blocks trigger
 if os.environ.get("GOOGLE_API_KEY"):
     os.environ["GEMINI_API_KEY"] = os.environ.get("GOOGLE_API_KEY")
 elif os.environ.get("GEMINI_API_KEY"):
@@ -25,12 +25,18 @@ HEADERS = {
     "Prefer": "return=representation"
 }
 
+# 1. CLASS DEFINED FIRST (Fixes the NameError)
+class ChatRequest(BaseModel):
+    session_id: str
+    title: str
+    question: str
+
+# 2. ENDPOINTS INTERFACES FOLLOW
 @router.get("/history")
 def get_user_history(user_id: Optional[str] = Cookie(None)):
     if not user_id or not SUPABASE_URL:
         return []
     try:
-        # Fetch user sessions cleanly
         sess_url = f"{SUPABASE_URL}/rest/v1/sessions?user_id=eq.{user_id}&select=id,title&order=created_at.desc"
         s_res = requests.get(sess_url, headers=HEADERS)
         if s_res.status_code != 200:
@@ -70,7 +76,6 @@ def get_user_history(user_id: Optional[str] = Cookie(None)):
 
 @router.post("/chat")
 def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[str] = Cookie(None)):
-    # CRITICAL: Force ensure cookie exists and propagates perfectly across Hugging Face frames
     if not user_id:
         user_id = str(uuid.uuid4())
         response.set_cookie(
@@ -78,7 +83,7 @@ def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[st
             value=user_id, 
             max_age=31536000, 
             httponly=False, 
-            samesite="none", # Required for iframe embedding security clearances
+            samesite="none", 
             secure=True,
             path="/"
         )
@@ -87,7 +92,6 @@ def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[st
         return {"answer": "Cloud settings configuration missing.", "sources": []}
 
     try:
-        # Check and verify active current session entry updates
         chk_url = f"{SUPABASE_URL}/rest/v1/sessions?id=eq.{request.session_id}&select=id"
         chk_res = requests.get(chk_url, headers=HEADERS)
         
@@ -104,12 +108,10 @@ def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[st
         sources_str = ",".join(sources_list) if sources_list else ""
         bot_answer = result.get("answer", "I couldn't locate specific references.")
         
-        # Insert conversation metrics
         ins_msg_url = f"{SUPABASE_URL}/rest/v1/messages"
         requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "user", "content": request.question, "sources": ""})
         requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "bot", "content": bot_answer, "sources": sources_str})
         
-        # Dynamic Auto-Title Updater Action
         count_url = f"{SUPABASE_URL}/rest/v1/messages?session_id=eq.{request.session_id}&role=eq.user&select=id"
         c_res = requests.get(count_url, headers=HEADERS)
         if c_res.status_code == 200 and len(c_res.json()) <= 1:
@@ -119,7 +121,6 @@ def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[st
 
         return result
     except Exception as e:
-        # Graceful UI continuity exception handlers
         return {"answer": "System online. History pipeline updated. Please submit your question again.", "sources": []}
 
 @router.delete("/session/{session_id}")
