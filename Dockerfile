@@ -1,10 +1,10 @@
-FROM python:3.10-slim
+FROM python:3.9-slim
 
 WORKDIR /code
 
 COPY ./requirements.txt /code/requirements.txt
 
-RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
+RUN pip install --no-cache-dir --upgrade -r /code/requirements.txthttp://googleusercontent.com/image_generation_content/0
 
 COPY . .
 
