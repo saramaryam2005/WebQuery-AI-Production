@@ -8,34 +8,40 @@ from app.chatbot.rag_chain import ask_question
 
 router = APIRouter()
 
-# Dynamically check if running on Hugging Face cloud or locally
-if os.environ.get("RUNNING_ON_HF") or not os.access(".", os.W_OK):
-    DB_PATH = "/tmp/chatbot.db"
-else:
-    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-    PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
-    DB_PATH = os.path.normpath(os.path.join(PROJECT_ROOT, "chatbot.db"))
-
-# Create a global connection placeholder right above the function
+# Global connection placeholder for Hugging Face RAM mode
 _hf_memory_conn = None
+
+# Calculate paths for local fallback
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+DB_PATH = os.path.normpath(os.path.join(PROJECT_ROOT, "chatbot.db"))
+
+def is_hf():
+    return os.environ.get("RUNNING_ON_HF") == "true" or os.environ.get("RUNNING_ON_HF") == "1"
 
 def get_db_connection():
     global _hf_memory_conn
     
-    # Check if running on Hugging Face cloud
-    if os.environ.get("RUNNING_ON_HF") == "true" or os.environ.get("RUNNING_ON_HF") == "1":
+    if is_hf():
         if _hf_memory_conn is None:
-            # Create a shared in-memory database that stays alive in RAM while the app runs
-            _hf_memory_conn = sqlite3.connect("file:hf_shared_mem_db?mode=memory&cache=shared", uri=True, timeout=10.0)
+            # Create a truly persistent, shared in-memory database workspace
+            _hf_memory_conn = sqlite3.connect("file:hf_shared_mem_db?mode=memory&cache=shared", uri=True, timeout=15.0)
             _hf_memory_conn.row_factory = sqlite3.Row
+            # Enable quick database cascading deletes
+            _hf_memory_conn.execute("PRAGMA foreign_keys = ON;")
         return _hf_memory_conn
     else:
-        # Standard local disk setup for running flawlessly on your laptop
         conn = sqlite3.connect(DB_PATH, timeout=10.0)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
         conn.execute("PRAGMA synchronous = EXTRA;")
         conn.execute("PRAGMA journal_mode = DELETE;")
         return conn
+
+def safe_close(conn):
+    """Only close the database connection if we are running locally on localhost."""
+    if not is_hf():
+        conn.close()
 
 def init_db():
     conn = get_db_connection()
@@ -60,11 +66,7 @@ def init_db():
         )
     """)
     conn.commit()
-    
-    # ONLY close the connection if running locally. Keep it open for Hugging Face RAM!
-    if not (os.environ.get("RUNNING_ON_HF") == "true" or os.environ.get("RUNNING_ON_HF") == "1"):
-        conn.close()
-     
+    safe_close(conn)
 
 init_db()
 
@@ -105,7 +107,7 @@ def get_user_history(user_id: Optional[str] = Cookie(None)):
             "messages": messages,
             "rawHistory": raw_history
         })
-    conn.close()
+    safe_close(conn)
     return history
 
 @router.post("/chat")
@@ -126,13 +128,11 @@ def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[st
                            (request.session_id, user_id, request.title))
             conn.commit()
             
-        # CORRECTED FIX: Call ask_question with ONLY the question string, matching your RAG chain signature
         result = ask_question(request.question)
         
         sources_str = ",".join(result["sources"]) if ("sources" in result and result["sources"]) else ""
         bot_answer = result.get("answer", "I couldn't find an answer for that.")
         
-        # Save both user and bot messages into the SQLite database file
         cursor.execute("INSERT INTO messages (session_id, role, content, sources) VALUES (?, 'user', ?, '')", 
                        (request.session_id, request.question))
         cursor.execute("INSERT INTO messages (session_id, role, content, sources) VALUES (?, 'bot', ?, ?)", 
@@ -148,10 +148,10 @@ def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[st
             cursor.execute("UPDATE sessions SET title = ? WHERE id = ?", (updated_title, request.session_id))
             conn.commit()
 
-        conn.close()
+        safe_close(conn)
         return result
     except Exception as e:
-        if 'conn' in locals(): conn.close()
+        if 'conn' in locals(): safe_close(conn)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/session/{session_id}")
@@ -161,14 +161,19 @@ def delete_chat_session(session_id: str, user_id: Optional[str] = Cookie(None)):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        
+        # Verify the session belongs to this user before deleting
         cursor.execute("SELECT id FROM sessions WHERE id = ? AND user_id = ?", (session_id, user_id))
         if not cursor.fetchone():
-            conn.close()
+            safe_close(conn)
             raise HTTPException(status_code=404, detail="Not found")
+            
+        # Execute the delete action smoothly
         cursor.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
         conn.commit()
-        conn.close()
+        
+        safe_close(conn)
         return {"status": "success"}
     except Exception as e:
-        if 'conn' in locals(): conn.close()
+        if 'conn' in locals(): safe_close(conn)
         raise HTTPException(status_code=500, detail=str(e))
