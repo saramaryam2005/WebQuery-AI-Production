@@ -13,3 +13,4 @@ load_dotenv()
 
 # Change line 14 to map cleanly to the default Google API variable
 GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
