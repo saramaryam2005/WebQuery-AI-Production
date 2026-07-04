@@ -6,10 +6,10 @@ from app.config import GEMINI_API_KEY
 
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    GEMINI_API_KEY=GEMINI_API_KEY,
-    temperature=0.2
-)
+   ChatGoogleGenerativeAI,
+    model="gemini-1.5-flash",
+    temperature=0.7) 
+
 prompt = ChatPromptTemplate.from_template(
     """
 You are an AI assistant for **WebKey India**.
