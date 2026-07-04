@@ -1,0 +1,61 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Environment Variables
+.env
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Logs
+*.log
+
+# Pytest
+.pytest_cache/
+
+# Ruff / Mypy
+.mypy_cache/
+.ruff_cache/
+
+# Build files
+build/
+dist/
+*.egg-info/
+
+# ChromaDB
+chroma/
+chroma_db/
+vector_db/
+
+# Selenium
+chromedriver.exe
+geckodriver.exe
+msedgedriver.exe
+
+# Local database
+*.db
+*.sqlite3
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Temporary files
+*.tmp
+*.bak
