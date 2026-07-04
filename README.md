@@ -20,7 +20,7 @@ Access the running application directly on Hugging Face Spaces:
 
 ---
 
-![Chatbot UI](chatbot.png)
+
 
 ## Demo Video
 
