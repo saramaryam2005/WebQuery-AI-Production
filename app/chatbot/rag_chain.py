@@ -4,10 +4,45 @@ from app.chatbot.retriever import retriever
 from app.config import GEMINI_API_KEY
 
 # Initialize the official native Google Client directly
-client = genai.Client(
-    api_key=GEMINI_API_KEY,
-    http_options={'api_version': 'v1'}
-)
+# 1. Keep the client initialization clean and simple near the top
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+# ... (keep your prompt and context extraction code exactly as they are) ...
+
+def ask_question(question: str):
+    documents = retriever.invoke(question)
+    context = ""
+    for doc in documents:
+        context += (
+            f"Title: {doc.metadata.get('title')}\n"
+            f"URL: {doc.metadata.get('url')}\n\n"
+            f"{doc.page_content}\n\n"
+            "---------------------------------\n\n"
+        )
+
+    final_prompt = prompt.format(
+        context=context,
+        question=question
+    )
+
+    # 2. CHANGE THE MODEL TARGET TO THE ACTIVE 2.5 ENGINE HERE:
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',  # <-- UPDATED TO THE ACTIVE MODEL
+        contents=final_prompt,
+    )
+    
+    sources = []
+    seen = set()
+    for doc in documents:
+        url = doc.metadata.get("url")
+        if url not in seen:
+            seen.add(url)
+            sources.append(url)
+
+    return {
+        "answer": response.text,
+        "sources": sources
+    }
 
 prompt = ChatPromptTemplate.from_template(
     """
