@@ -21,7 +21,6 @@ HEADERS = {
 }
 
 def init_db():
-    # Tables are auto-managed via the REST API layers, no complex DDL configuration needed!
     print("✅ Web API communication context configured for Supabase.")
 
 init_db()
@@ -36,7 +35,6 @@ def get_user_history(user_id: Optional[str] = Cookie(None)):
     if not user_id or not SUPABASE_URL:
         return []
     try:
-        # 1. Fetch all active sessions linked to this user cookie context
         sess_url = f"{SUPABASE_URL}/rest/v1/sessions?user_id=eq.{user_id}&select=id,title&order=created_at.desc"
         s_res = requests.get(sess_url, headers=HEADERS)
         if s_res.status_code != 200:
@@ -45,7 +43,6 @@ def get_user_history(user_id: Optional[str] = Cookie(None)):
         sessions = s_res.json()
         history = []
         
-        # 2. Extract corresponding message blocks chronologically
         for s in sessions:
             session_id = s["id"]
             msg_url = f"{SUPABASE_URL}/rest/v1/messages?session_id=eq.{session_id}&select=role,content,sources&order=id.asc"
@@ -55,9 +52,12 @@ def get_user_history(user_id: Optional[str] = Cookie(None)):
             raw_history = []
             if m_res.status_code == 200:
                 for m in m_res.json():
+                    # Handle front-end expected properties mapping safely
                     msg_data = {"content": m["content"], "role": m["role"]}
                     if m.get("sources"):
                         msg_data["sources"] = m["sources"].split(",")
+                    else:
+                        msg_data["sources"] = []
                     messages.append(msg_data)
                     
                     api_role = "user" if m["role"] == "user" else "assistant"
@@ -71,7 +71,7 @@ def get_user_history(user_id: Optional[str] = Cookie(None)):
             })
         return history
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return []
 
 @router.post("/chat")
 def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[str] = Cookie(None)):
@@ -88,18 +88,20 @@ def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[st
         chk_res = requests.get(chk_url, headers=HEADERS)
         
         if chk_res.status_code == 200 and not chk_res.json():
-            # Session entry setup is required
             ins_sess_url = f"{SUPABASE_URL}/rest/v1/sessions"
             payload = {"id": request.session_id, "user_id": user_id, "title": request.title}
             requests.post(ins_sess_url, headers=HEADERS, json=payload)
             
+        # Core execution call to LangChain/Gemini block
         result = ask_question(request.question)
-        sources_str = ",".join(result["sources"]) if ("sources" in result and result["sources"]) else ""
+        sources_list = result.get("sources", [])
+        sources_str = ",".join(sources_list) if sources_list else ""
         bot_answer = result.get("answer", "I couldn't find an answer for that.")
         
         # Write conversational payloads via sequential REST insertions
         ins_msg_url = f"{SUPABASE_URL}/rest/v1/messages"
         requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "user", "content": request.question, "sources": ""})
+        # Note: Save role value as expected by front-end rendering engines ('bot')
         requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "bot", "content": bot_answer, "sources": sources_str})
         
         # Title auto-updater logic for first entry
@@ -113,7 +115,8 @@ def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[st
 
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Provide structural fallback response to keep UI responsive if internal call throws warnings
+        return {"answer": "I'm sorry, I encountered an internal error processing your response. Please try again.", "sources": []}
 
 @router.delete("/session/{session_id}")
 def delete_chat_session(session_id: str, user_id: Optional[str] = Cookie(None)):
