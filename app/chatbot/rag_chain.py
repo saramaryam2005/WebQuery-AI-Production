@@ -1,22 +1,11 @@
 from langchain_core.prompts import ChatPromptTemplate
 from google import genai
-import os
-
-# --- NEW WORKING CODE ---
 from app.chatbot.retriever import retriever
-try:
-    from app.config import GEMINI_API_KEY
-except ImportError:
-    GEMINI_API_KEY = None
+from app.config import GEMINI_API_KEY
 
-# Fallback: If GEMINI_API_KEY is empty, check Hugging Face environment variables directly
-api_key = GEMINI_API_KEY or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+client = genai.Client(api_key=GEMINI_API_KEY)
 
-if not api_key:
-    print("⚠️ WARNING: No Gemini API Key was discovered in config or system environment variables!")
-
-# 1. Initialize the official native Google Client securely
-client = genai.Client(api_key=api_key)
+# ... (the rest of your original prompt and ask_question code)
 
 # 2. Define the prompt template clearly
 prompt = ChatPromptTemplate.from_template(
