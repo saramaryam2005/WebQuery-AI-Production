@@ -1,20 +1,21 @@
-# 1. Official Python Slim base container utilization
+# UPGRADED TO PYTHON 3.11
 FROM python:3.11-slim
 
 WORKDIR /code
 
-# 2. Layer caching for installation tracking
+# Copy requirements and install packages
 COPY ./requirements.txt /code/requirements.txt
 RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
-# 3. Code delivery context
+# Copy everything into the working directory
 COPY . /code
 
-# 4. Open general security permission write profiles for vector caches
-RUN chmod -R 777 /code
+# Enforce open directory read/write access profiles for safe local SQLite caching
+RUN mkdir -p /code/chroma_db && chmod -R 777 /code
 
-# 5. Hugging Face network binding interface
+# Hugging Face Spaces listens exclusively on port 7860
 EXPOSE 7860
 
-# 6. Execute direct production server orchestration standard 
+# Run Uvicorn directly to launch your live FastAPI web app interface framework
+ENV RUNNING_ON_HF=true
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
