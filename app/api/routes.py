@@ -1,6 +1,9 @@
 import os
+import json
+import asyncio
 import requests
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr
 from typing import List, Dict, Optional
 
@@ -24,7 +27,6 @@ HEADERS = {
     "Prefer": "return=representation"
 }
 
-# --- Pydantic Schemas for Auth & Chat ---
 class UserAuth(BaseModel):
     email: EmailStr
     password: str
@@ -33,64 +35,45 @@ class AuthenticatedChatRequest(BaseModel):
     session_id: str
     title: str
     question: str
-    user_id: str  # Strictly required now from frontend auth state
+    user_id: str
 
-# --- 1. SIGNUP ENDPOINT ---
 @router.post("/auth/signup")
 def signup_user(auth_data: UserAuth):
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise HTTPException(status_code=500, detail="Database credentials missing.")
-    
     signup_url = f"{SUPABASE_URL}/auth/v1/signup"
-    res = requests.post(signup_url, headers=HEADERS, json={
-        "email": auth_data.email,
-        "password": auth_data.password
-    })
-    
+    res = requests.post(signup_url, headers=HEADERS, json={"email": auth_data.email, "password": auth_data.password})
     if res.status_code not in [200, 201]:
         raise HTTPException(status_code=res.status_code, detail=res.json().get("msg", "Signup failed"))
-    
     data = res.json()
     return {"message": "Signup successful", "user_id": data["user"]["id"], "email": data["user"]["email"]}
 
-# --- 2. LOGIN ENDPOINT ---
 @router.post("/auth/login")
 def login_user(auth_data: UserAuth):
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise HTTPException(status_code=500, detail="Database credentials missing.")
-    
     login_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
-    res = requests.post(login_url, headers=HEADERS, json={
-        "email": auth_data.email,
-        "password": auth_data.password
-    })
-    
+    res = requests.post(login_url, headers=HEADERS, json={"email": auth_data.email, "password": auth_data.password})
     if res.status_code not in [200, 201]:
         raise HTTPException(status_code=res.status_code, detail=res.json().get("msg", "Invalid credentials"))
-    
     data = res.json()
     return {"message": "Login successful", "user_id": data["user"]["id"], "access_token": data["access_token"]}
 
-# --- 3. SECURE HISTORY FETCH ---
 @router.get("/history")
 def get_user_history(user_id: Optional[str] = Query(None)):
     if not user_id or user_id == "webquery_anonymous_user":
-        return []  # Return empty if user is not logged in
-        
+        return []
     try:
         sess_url = f"{SUPABASE_URL}/rest/v1/sessions?user_id=eq.{user_id}&select=id,title&order=created_at.desc"
         s_res = requests.get(sess_url, headers=HEADERS)
         if s_res.status_code != 200:
             return []
-        
         sessions = s_res.json()
         history = []
-        
         for s in sessions:
             session_id = s["id"]
             msg_url = f"{SUPABASE_URL}/rest/v1/messages?session_id=eq.{session_id}&select=role,content,sources&order=id.asc"
             m_res = requests.get(msg_url, headers=HEADERS)
-            
             messages = []
             raw_history = []
             if m_res.status_code == 200:
@@ -100,11 +83,7 @@ def get_user_history(user_id: Optional[str] = Query(None)):
                         "content": m["content"],
                         "sources": m["sources"].split(",") if m.get("sources") else []
                     })
-                    raw_history.append({
-                        "role": "user" if m["role"] == "user" else "assistant",
-                        "content": m["content"]
-                    })
-            
+                    raw_history.append({"role": "user" if m["role"] == "user" else "assistant", "content": m["content"]})
             history.append({
                 "id": session_id,
                 "title": s["title"] if s.get("title") else "Saved Chat Session",
@@ -115,42 +94,45 @@ def get_user_history(user_id: Optional[str] = Query(None)):
     except Exception:
         return []
 
-# --- 4. SECURE CHAT ENDPOINT ---
+# --- NEW PRODUCTION STREAMING ENGINE ---
 @router.post("/chat")
 def chat_endpoint(request: AuthenticatedChatRequest):
-    try:
-        # Check if session exists
-        chk_url = f"{SUPABASE_URL}/rest/v1/sessions?id=eq.{request.session_id}&select=id"
-        chk_res = requests.get(chk_url, headers=HEADERS)
-        
-        if chk_res.status_code == 200 and not chk_res.json():
-            ins_sess_url = f"{SUPABASE_URL}/rest/v1/sessions"
-            requests.post(ins_sess_url, headers=HEADERS, json={
-                "id": request.session_id, 
-                "user_id": request.user_id, 
-                "title": request.title if request.title else "New Chat Session"
-            })
-            
-        result = ask_question(request.question)
-        bot_answer = result.get("answer", "I couldn't locate specific references.")
-        sources_str = ",".join(result.get("sources", [])) if result.get("sources") else ""
-        
-        # Insert Chat Data
-        ins_msg_url = f"{SUPABASE_URL}/rest/v1/messages"
-        requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "user", "content": request.question, "sources": ""})
-        requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "bot", "content": bot_answer, "sources": sources_str})
-        
-        # Auto Update Title
-        count_url = f"{SUPABASE_URL}/rest/v1/messages?session_id=eq.{request.session_id}&role=eq.user&select=id"
-        c_res = requests.get(count_url, headers=HEADERS)
-        if c_res.status_code == 200 and len(c_res.json()) <= 1:
-            updated_title = request.question[:18] + "..." if len(request.question) > 18 else request.question
-            upd_url = f"{SUPABASE_URL}/rest/v1/sessions?id=eq.{request.session_id}"
-            requests.patch(upd_url, headers=HEADERS, json={"title": updated_title})
+    async def event_generator():
+        try:
+            # 1. Initialize session if missing
+            chk_url = f"{SUPABASE_URL}/rest/v1/sessions?id=eq.{request.session_id}&select=id"
+            chk_res = requests.get(chk_url, headers=HEADERS)
+            if chk_res.status_code == 200 and not chk_res.json():
+                ins_sess_url = f"{SUPABASE_URL}/rest/v1/sessions"
+                requests.post(ins_sess_url, headers=HEADERS, json={
+                    "id": request.session_id, "user_id": request.user_id, "title": request.question[:20]
+                })
 
-        return result
-    except Exception as e:
-        return {"answer": "Database connection drop under authentication. Retry query.", "sources": []}
+            # 2. Call our RAG Chain
+            result = ask_question(request.question)
+            bot_answer = result.get("answer", "I couldn't locate specific references.")
+            sources = result.get("sources", [])
+            sources_str = ",".join(sources) if sources else ""
+
+            # 3. Simulate chunk streaming for smooth UI simulation over HTTP standard event packet
+            words = bot_answer.split(" ")
+            for i, word in enumerate(words):
+                chunk = word + (" " if i < len(words) - 1 else "")
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+                await asyncio.sleep(0.04) # Control smooth word-by-word pacing
+
+            # 4. Stream final package with source links reference mapping array metadata
+            yield f"data: {json.dumps({'sources': sources})}\n\n"
+
+            # 5. Insert log entries permanently to cloud DB logs pipeline inside background worker frame
+            ins_msg_url = f"{SUPABASE_URL}/rest/v1/messages"
+            requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "user", "content": request.question, "sources": ""})
+            requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "bot", "content": bot_answer, "sources": sources_str})
+
+        except Exception as e:
+            yield f"data: {json.dumps({'text': 'Streaming sync pipeline interrupt anomaly.'})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @router.delete("/session/{session_id}")
 def delete_chat_session(session_id: str):

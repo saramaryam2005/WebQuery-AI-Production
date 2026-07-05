@@ -171,6 +171,7 @@ function createNewChat() {
 }
 
 // --- SECURE MESSAGE PIPELINE ---
+// --- SECURE MESSAGE PIPELINE WITH STREAMING SUPPORT ---
 async function sendMessage() {
     const inputEl = document.getElementById("user-input");
     const question = inputEl.value.trim();
@@ -179,12 +180,15 @@ async function sendMessage() {
     appendMessage("user", question);
     inputEl.value = "";
     
-    // Create Temporary Loading State
     const chatBox = document.getElementById("chat-box");
-    const loadingDiv = document.createElement("div");
-    loadingDiv.className = "message bot-loading";
-    loadingDiv.innerText = "Thinking...";
-    chatBox.appendChild(loadingDiv);
+    
+    // Create an empty bot message bubble where tokens will be streamed dynamically
+    const botMsgDiv = document.createElement("div");
+    botMsgDiv.className = "message bot";
+    const botTextPara = document.createElement("p");
+    botTextPara.innerText = "Thinking...";
+    botMsgDiv.appendChild(botTextPara);
+    chatBox.appendChild(botMsgDiv);
     chatBox.scrollTop = chatBox.scrollHeight;
     
     try {
@@ -195,40 +199,82 @@ async function sendMessage() {
                 session_id: currentSessionId,
                 title: question.substring(0, 20),
                 question: question,
-                user_id: currentUserId // Passing current authenticated User ID
+                user_id: currentUserId
             })
         });
         
-        const data = await response.json();
-        chatBox.removeChild(loadingDiv); // Clear loader
-        
-        if (response.ok) {
-            appendMessage("bot", data.answer, data.sources);
-            // Dynamic refresh history configuration map
-            const activeSession = allSessions.find(s => s.id === currentSessionId);
-            if (!activeSession) {
-                allSessions.unshift({
-                    id: currentSessionId,
-                    title: question.substring(0, 18),
-                    messages: [
-                        { role: "user", content: question },
-                        { role: "bot", content: data.answer, sources: data.sources }
-                    ]
-                });
-            } else {
-                activeSession.messages.push({ role: "user", content: question });
-                activeSession.messages.push({ role: "bot", content: data.answer, sources: data.sources });
-            }
-            renderHistoryList();
-        } else {
-            appendMessage("bot", "Error processing request.");
+        if (!response.ok) {
+            botTextPara.innerText = "Error processing request framework.";
+            return;
         }
+
+        // Initialize Reader to parse stream blocks chunk-by-chunk
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        botTextPara.innerText = ""; // Clear loader placeholder string
+
+        let accumulatedAnswer = "";
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            
+            const chunkText = decoder.decode(value);
+            const lines = chunkText.split("\n");
+            
+            for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                    try {
+                        const rawJson = line.replace("data: ", "").trim();
+                        if (!rawJson) continue;
+                        const dataData = JSON.parse(rawJson);
+                        
+                        // Handle streaming words text updates
+                        if (dataData.text) {
+                            accumulatedAnswer += dataData.text;
+                            botTextPara.innerText = accumulatedAnswer;
+                            chatBox.scrollTop = chatBox.scrollHeight;
+                        }
+                        
+                        // Handle final sources metadata attachment package
+                        if (dataData.sources && dataData.sources.length > 0) {
+                            let sourcesHtml = `<div style="margin-top: 8px; font-size: 12px; color: #89b4fa; border-top: 1px solid #45475a; padding-top: 5px;">🔍 Sources: `;
+                            dataData.sources.forEach(src => {
+                                sourcesHtml += `<a href="${src}" target="_blank" style="color: #b4befe; text-decoration: underline; margin-right: 8px; display: inline-block;">Link</a>`;
+                            });
+                            sourcesHtml += `</div>`;
+                            botMsgDiv.innerHTML += sourcesHtml;
+                            chatBox.scrollTop = chatBox.scrollHeight;
+                        }
+                    } catch (err) {
+                        // Skip framing anomalies silently
+                    }
+                }
+            }
+        }
+
+        // Local state updates validation framework map mirror push
+        const activeSession = allSessions.find(s => s.id === currentSessionId);
+        if (!activeSession) {
+            allSessions.unshift({
+                id: currentSessionId,
+                title: question.substring(0, 18),
+                messages: [
+                    { role: "user", content: question },
+                    { role: "bot", content: accumulatedAnswer }
+                ]
+            });
+        } else {
+            activeSession.messages.push({ role: "user", content: question });
+            activeSession.messages.push({ role: "bot", content: accumulatedAnswer });
+        }
+        renderHistoryList();
+
     } catch (err) {
-        if (loadingDiv.parentNode) chatBox.removeChild(loadingDiv);
-        appendMessage("bot", "Network connection drop.");
+        botTextPara.innerText = "Network pipeline error timeout.";
     }
 }
-
+  
 async function deleteSessionFromServer(sessionId) {
     if (!confirm("Are you sure you want to delete this chat session?")) return;
     try {
