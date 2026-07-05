@@ -1,11 +1,9 @@
 import os
-import uuid
 import requests
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import List, Dict, Optional
 
-# Force Gemini environment mappings safely
 if os.environ.get("GEMINI_API_KEY"):
     os.environ["GOOGLE_API_KEY"] = os.environ.get("GEMINI_API_KEY")
 
@@ -16,7 +14,6 @@ router = APIRouter()
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-# Remove trailing slash if present in URL
 if SUPABASE_URL and SUPABASE_URL.endswith("/"):
     SUPABASE_URL = SUPABASE_URL.rstrip("/")
 
@@ -27,19 +24,61 @@ HEADERS = {
     "Prefer": "return=representation"
 }
 
-class ChatRequest(BaseModel):
+# --- Pydantic Schemas for Auth & Chat ---
+class UserAuth(BaseModel):
+    email: EmailStr
+    password: str
+
+class AuthenticatedChatRequest(BaseModel):
     session_id: str
     title: str
     question: str
-    user_id: Optional[str] = None  # Frontend blocks cookies fallback tracking
+    user_id: str  # Strictly required now from frontend auth state
 
+# --- 1. SIGNUP ENDPOINT ---
+@router.post("/auth/signup")
+def signup_user(auth_data: UserAuth):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise HTTPException(status_code=500, detail="Database credentials missing.")
+    
+    signup_url = f"{SUPABASE_URL}/auth/v1/signup"
+    res = requests.post(signup_url, headers=HEADERS, json={
+        "email": auth_data.email,
+        "password": auth_data.password
+    })
+    
+    if res.status_code not in [200, 201]:
+        raise HTTPException(status_code=res.status_code, detail=res.json().get("msg", "Signup failed"))
+    
+    data = res.json()
+    return {"message": "Signup successful", "user_id": data["user"]["id"], "email": data["user"]["email"]}
+
+# --- 2. LOGIN ENDPOINT ---
+@router.post("/auth/login")
+def login_user(auth_data: UserAuth):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise HTTPException(status_code=500, detail="Database credentials missing.")
+    
+    login_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
+    res = requests.post(login_url, headers=HEADERS, json={
+        "email": auth_data.email,
+        "password": auth_data.password
+    })
+    
+    if res.status_code not in [200, 201]:
+        raise HTTPException(status_code=res.status_code, detail=res.json().get("msg", "Invalid credentials"))
+    
+    data = res.json()
+    return {"message": "Login successful", "user_id": data["user"]["id"], "access_token": data["access_token"]}
+
+# --- 3. SECURE HISTORY FETCH ---
 @router.get("/history")
 def get_user_history(user_id: Optional[str] = Query(None)):
-    active_user = user_id if user_id else "webquery_anonymous_user"
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return []
+    if not user_id or user_id == "webquery_anonymous_user":
+        return []  # Return empty if user is not logged in
+        
     try:
-        sess_url = f"{SUPABASE_URL}/rest/v1/sessions?user_id=eq.{active_user}&select=id,title&order=created_at.desc"
+        sess_url = f"{SUPABASE_URL}/rest/v1/sessions?user_id=eq.{user_id}&select=id,title&order=created_at.desc"
         s_res = requests.get(sess_url, headers=HEADERS)
         if s_res.status_code != 200:
             return []
@@ -76,13 +115,9 @@ def get_user_history(user_id: Optional[str] = Query(None)):
     except Exception:
         return []
 
+# --- 4. SECURE CHAT ENDPOINT ---
 @router.post("/chat")
-def chat_endpoint(request: ChatRequest):
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return {"answer": "Cloud database credentials configuration missing.", "sources": []}
-
-    active_user = request.user_id if request.user_id else "webquery_anonymous_user"
-
+def chat_endpoint(request: AuthenticatedChatRequest):
     try:
         # Check if session exists
         chk_url = f"{SUPABASE_URL}/rest/v1/sessions?id=eq.{request.session_id}&select=id"
@@ -92,7 +127,7 @@ def chat_endpoint(request: ChatRequest):
             ins_sess_url = f"{SUPABASE_URL}/rest/v1/sessions"
             requests.post(ins_sess_url, headers=HEADERS, json={
                 "id": request.session_id, 
-                "user_id": active_user, 
+                "user_id": request.user_id, 
                 "title": request.title if request.title else "New Chat Session"
             })
             
@@ -105,7 +140,7 @@ def chat_endpoint(request: ChatRequest):
         requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "user", "content": request.question, "sources": ""})
         requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "bot", "content": bot_answer, "sources": sources_str})
         
-        # Auto Update Title on First Message
+        # Auto Update Title
         count_url = f"{SUPABASE_URL}/rest/v1/messages?session_id=eq.{request.session_id}&role=eq.user&select=id"
         c_res = requests.get(count_url, headers=HEADERS)
         if c_res.status_code == 200 and len(c_res.json()) <= 1:
@@ -115,12 +150,10 @@ def chat_endpoint(request: ChatRequest):
 
         return result
     except Exception as e:
-        return {"answer": "Database pipeline sync active. Please submit your question again.", "sources": []}
+        return {"answer": "Database connection drop under authentication. Retry query.", "sources": []}
 
 @router.delete("/session/{session_id}")
 def delete_chat_session(session_id: str):
-    if not SUPABASE_URL:
-        raise HTTPException(status_code=500, detail="Database environment unavailable.")
     try:
         del_url = f"{SUPABASE_URL}/rest/v1/sessions?id=eq.{session_id}"
         requests.delete(del_url, headers=HEADERS)
