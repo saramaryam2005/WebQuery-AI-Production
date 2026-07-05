@@ -1,7 +1,7 @@
 import os
 import uuid
 import requests
-from fastapi import APIRouter, HTTPException, Cookie, Response
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 
@@ -18,6 +18,10 @@ router = APIRouter()
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
+# Fix trailing slashes automatically
+if SUPABASE_URL and SUPABASE_URL.endswith("/"):
+    SUPABASE_URL = SUPABASE_URL.rstrip("/")
+
 HEADERS = {
     "apikey": SUPABASE_KEY if SUPABASE_KEY else "",
     "Authorization": f"Bearer {SUPABASE_KEY}" if SUPABASE_KEY else "",
@@ -25,18 +29,21 @@ HEADERS = {
     "Prefer": "return=representation"
 }
 
-# Class structure schema layout initialization
 class ChatRequest(BaseModel):
     session_id: str
     title: str
     question: str
+    user_id: Optional[str] = None  # Fallback client-side state tracking
 
 @router.get("/history")
-def get_user_history(user_id: Optional[str] = Cookie(None)):
-    if not user_id or not SUPABASE_URL:
+def get_user_history(user_id: Optional[str] = Query(None)):
+    # Fallback to a static default system id if third-party context blocks tracking tokens
+    active_user = user_id if user_id else "webquery_anonymous_user"
+    
+    if not SUPABASE_URL:
         return []
     try:
-        sess_url = f"{SUPABASE_URL}/rest/v1/sessions?user_id=eq.{user_id}&select=id,title&order=created_at.desc"
+        sess_url = f"{SUPABASE_URL}/rest/v1/sessions?user_id=eq.{active_user}&select=id,title&order=created_at.desc"
         s_res = requests.get(sess_url, headers=HEADERS)
         if s_res.status_code != 200:
             return []
@@ -74,21 +81,12 @@ def get_user_history(user_id: Optional[str] = Cookie(None)):
         return []
 
 @router.post("/chat")
-def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[str] = Cookie(None)):
-    if not user_id:
-        user_id = str(uuid.uuid4())
-        response.set_cookie(
-            key="user_id", 
-            value=user_id, 
-            max_age=31536000, 
-            httponly=False, 
-            samesite="none", 
-            secure=True,
-            path="/"
-        )
-
+def chat_endpoint(request: ChatRequest):
     if not SUPABASE_URL:
         return {"answer": "Cloud settings configuration missing.", "sources": []}
+
+    # Tracking user structure transparently across dynamic frames
+    active_user = request.user_id if request.user_id else "webquery_anonymous_user"
 
     try:
         chk_url = f"{SUPABASE_URL}/rest/v1/sessions?id=eq.{request.session_id}&select=id"
@@ -98,7 +96,7 @@ def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[st
             ins_sess_url = f"{SUPABASE_URL}/rest/v1/sessions"
             requests.post(ins_sess_url, headers=HEADERS, json={
                 "id": request.session_id, 
-                "user_id": user_id, 
+                "user_id": active_user, 
                 "title": request.title if request.title else "New Chat Session"
             })
             
@@ -120,10 +118,10 @@ def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[st
 
         return result
     except Exception as e:
-        return {"answer": "System online. History pipeline updated. Please submit your question again.", "sources": []}
+        return {"answer": f"Backend communication anomaly. Details: {str(e)}", "sources": []}
 
 @router.delete("/session/{session_id}")
-def delete_chat_session(session_id: str, user_id: Optional[str] = Cookie(None)):
+def delete_chat_session(session_id: str):
     if not SUPABASE_URL:
         raise HTTPException(status_code=500, detail="Database environment unavailable.")
     try:
