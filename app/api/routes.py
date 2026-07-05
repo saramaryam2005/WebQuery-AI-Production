@@ -1,6 +1,7 @@
 import os
-import sqlite3
-from fastapi import APIRouter, HTTPException, Cookie, Response
+import uuid
+import requests
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 
@@ -12,124 +13,117 @@ from app.chatbot.rag_chain import ask_question
 
 router = APIRouter()
 
-DB_PATH = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "chatbot.db"))
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-def init_local_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS sessions (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            title TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            sources TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
-        )
-    """)
-    conn.commit()
-    conn.close()
+# Remove trailing slash if present in URL
+if SUPABASE_URL and SUPABASE_URL.endswith("/"):
+    SUPABASE_URL = SUPABASE_URL.rstrip("/")
 
-# Auto boot local schema tracker
-init_local_db()
+HEADERS = {
+    "apikey": SUPABASE_KEY if SUPABASE_KEY else "",
+    "Authorization": f"Bearer {SUPABASE_KEY}" if SUPABASE_KEY else "",
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+}
 
 class ChatRequest(BaseModel):
     session_id: str
     title: str
     question: str
+    user_id: Optional[str] = None  # Frontend blocks cookies fallback tracking
 
 @router.get("/history")
-def get_user_history(user_id: Optional[str] = Cookie(None)):
-    if not user_id:
+def get_user_history(user_id: Optional[str] = Query(None)):
+    active_user = user_id if user_id else "webquery_anonymous_user"
+    if not SUPABASE_URL or not SUPABASE_KEY:
         return []
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        sess_url = f"{SUPABASE_URL}/rest/v1/sessions?user_id=eq.{active_user}&select=id,title&order=created_at.desc"
+        s_res = requests.get(sess_url, headers=HEADERS)
+        if s_res.status_code != 200:
+            return []
         
-        cursor.execute("SELECT id, title FROM sessions WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
-        sessions = cursor.fetchall()
+        sessions = s_res.json()
         history = []
         
         for s in sessions:
-            cursor.execute("SELECT role, content, sources FROM messages WHERE session_id = ? ORDER BY id ASC", (s["id"],))
-            rows = cursor.fetchall()
+            session_id = s["id"]
+            msg_url = f"{SUPABASE_URL}/rest/v1/messages?session_id=eq.{session_id}&select=role,content,sources&order=id.asc"
+            m_res = requests.get(msg_url, headers=HEADERS)
+            
             messages = []
             raw_history = []
-            
-            for r in rows:
-                messages.append({
-                    "role": r["role"],
-                    "content": r["content"],
-                    "sources": r["sources"].split(",") if r["sources"] else []
-                })
-                raw_history.append({
-                    "role": "user" if r["role"] == "user" else "assistant",
-                    "content": r["content"]
-                })
+            if m_res.status_code == 200:
+                for m in m_res.json():
+                    messages.append({
+                        "role": m["role"],
+                        "content": m["content"],
+                        "sources": m["sources"].split(",") if m.get("sources") else []
+                    })
+                    raw_history.append({
+                        "role": "user" if m["role"] == "user" else "assistant",
+                        "content": m["content"]
+                    })
             
             history.append({
-                "id": s["id"],
-                "title": s["title"] if s["title"] else "Saved Chat Session",
+                "id": session_id,
+                "title": s["title"] if s.get("title") else "Saved Chat Session",
                 "messages": messages,
                 "rawHistory": raw_history
             })
-        conn.close()
         return history
     except Exception:
         return []
 
 @router.post("/chat")
-def chat_endpoint(request: ChatRequest, response: Response, user_id: Optional[str] = Cookie(None)):
-    if not user_id:
-        import uuid
-        user_id = str(uuid.uuid4())
-        response.set_cookie(key="user_id", value=user_id, max_age=31536000, httponly=False, samesite="none", secure=True, path="/")
+def chat_endpoint(request: ChatRequest):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return {"answer": "Cloud database credentials configuration missing.", "sources": []}
+
+    active_user = request.user_id if request.user_id else "webquery_anonymous_user"
 
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        # Check if session exists
+        chk_url = f"{SUPABASE_URL}/rest/v1/sessions?id=eq.{request.session_id}&select=id"
+        chk_res = requests.get(chk_url, headers=HEADERS)
         
-        cursor.execute("SELECT id FROM sessions WHERE id = ?", (request.session_id,))
-        if not cursor.fetchone():
-            cursor.execute("INSERT INTO sessions (id, user_id, title) VALUES (?, ?, ?)", 
-                           (request.session_id, user_id, request.title if request.title else "New Chat Session"))
+        if chk_res.status_code == 200 and not chk_res.json():
+            ins_sess_url = f"{SUPABASE_URL}/rest/v1/sessions"
+            requests.post(ins_sess_url, headers=HEADERS, json={
+                "id": request.session_id, 
+                "user_id": active_user, 
+                "title": request.title if request.title else "New Chat Session"
+            })
             
         result = ask_question(request.question)
         bot_answer = result.get("answer", "I couldn't locate specific references.")
         sources_str = ",".join(result.get("sources", [])) if result.get("sources") else ""
         
-        cursor.execute("INSERT INTO messages (session_id, role, content, sources) VALUES (?, ?, ?, ?)", (request.session_id, "user", request.question, ""))
-        cursor.execute("INSERT INTO messages (session_id, role, content, sources) VALUES (?, ?, ?, ?)", (request.session_id, "bot", bot_answer, sources_str))
+        # Insert Chat Data
+        ins_msg_url = f"{SUPABASE_URL}/rest/v1/messages"
+        requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "user", "content": request.question, "sources": ""})
+        requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "bot", "content": bot_answer, "sources": sources_str})
         
-        cursor.execute("SELECT count(*) FROM messages WHERE session_id = ? AND role = 'user'", (request.session_id,))
-        if cursor.fetchone()[0] <= 1:
+        # Auto Update Title on First Message
+        count_url = f"{SUPABASE_URL}/rest/v1/messages?session_id=eq.{request.session_id}&role=eq.user&select=id"
+        c_res = requests.get(count_url, headers=HEADERS)
+        if c_res.status_code == 200 and len(c_res.json()) <= 1:
             updated_title = request.question[:18] + "..." if len(request.question) > 18 else request.question
-            cursor.execute("UPDATE sessions SET title = ? WHERE id = ?", (updated_title, request.session_id))
-            
-        conn.commit()
-        conn.close()
+            upd_url = f"{SUPABASE_URL}/rest/v1/sessions?id=eq.{request.session_id}"
+            requests.patch(upd_url, headers=HEADERS, json={"title": updated_title})
+
         return result
     except Exception as e:
-        return {"answer": "Local sequence online. Please re-submit entry.", "sources": []}
+        return {"answer": "Database pipeline sync active. Please submit your question again.", "sources": []}
 
 @router.delete("/session/{session_id}")
 def delete_chat_session(session_id: str):
+    if not SUPABASE_URL:
+        raise HTTPException(status_code=500, detail="Database environment unavailable.")
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
-        conn.commit()
-        conn.close()
+        del_url = f"{SUPABASE_URL}/rest/v1/sessions?id=eq.{session_id}"
+        requests.delete(del_url, headers=HEADERS)
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
