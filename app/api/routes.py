@@ -95,6 +95,7 @@ def get_user_history(user_id: Optional[str] = Query(None)):
         return []
 
 # --- NEW PRODUCTION STREAMING ENGINE ---
+# --- FIX PRODUCTION STREAMING ENGINE FOR HF PROXY ---
 @router.post("/chat")
 def chat_endpoint(request: AuthenticatedChatRequest):
     async def event_generator():
@@ -114,25 +115,30 @@ def chat_endpoint(request: AuthenticatedChatRequest):
             sources = result.get("sources", [])
             sources_str = ",".join(sources) if sources else ""
 
-            # 3. Simulate chunk streaming for smooth UI simulation over HTTP standard event packet
+            # 3. Proper Line Formatting with clear data markers
             words = bot_answer.split(" ")
             for i, word in enumerate(words):
                 chunk = word + (" " if i < len(words) - 1 else "")
-                yield f"data: {json.dumps({'text': chunk})}\n\n"
-                await asyncio.sleep(0.04) # Control smooth word-by-word pacing
+                # Clean payload mapping
+                payload = json.dumps({'text': chunk})
+                yield f"data: {payload}\n\n"
+                await asyncio.sleep(0.02) # Faster and smooth streaming pacing
 
-            # 4. Stream final package with source links reference mapping array metadata
-            yield f"data: {json.dumps({'sources': sources})}\n\n"
+            # 4. Final metadata chunk stream
+            payload_sources = json.dumps({'sources': sources})
+            yield f"data: {payload_sources}\n\n"
 
-            # 5. Insert log entries permanently to cloud DB logs pipeline inside background worker frame
+            # 5. Background log logging inside database sync engine
             ins_msg_url = f"{SUPABASE_URL}/rest/v1/messages"
             requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "user", "content": request.question, "sources": ""})
             requests.post(ins_msg_url, headers=HEADERS, json={"session_id": request.session_id, "role": "bot", "content": bot_answer, "sources": sources_str})
 
         except Exception as e:
-            yield f"data: {json.dumps({'text': 'Streaming sync pipeline interrupt anomaly.'})}\n\n"
+            err_payload = json.dumps({'text': 'Pipeline processing anomaly.'})
+            yield f"data: {err_payload}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
 
 @router.delete("/session/{session_id}")
 def delete_chat_session(session_id: str):
