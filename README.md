@@ -16,7 +16,7 @@ The application scrapes website content, generates vector embeddings, stores the
 
 ## 🚀 Live Demo
 Access the running application directly on Hugging Face Spaces:
-👉 **[WebQuery AI Chatbot Space](https://huggingface.co/spaces/saramaryam1226/Web_Query_AI_Chatbot)**
+👉 **[WebQuery AI Chatbot Space](https://huggingface.co/spaces/saramaryam1226/WebQuery-AI-Production)**
 
 ---
 
