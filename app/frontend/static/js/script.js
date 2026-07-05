@@ -171,7 +171,7 @@ function createNewChat() {
 }
 
 // --- SECURE MESSAGE PIPELINE ---
-// --- SECURE MESSAGE PIPELINE WITH STREAMING SUPPORT ---
+// --- SECURE CRASH-PROOF STREAMING PIPELINE ---
 async function sendMessage() {
     const inputEl = document.getElementById("user-input");
     const question = inputEl.value.trim();
@@ -182,7 +182,7 @@ async function sendMessage() {
     
     const chatBox = document.getElementById("chat-box");
     
-    // Create an empty bot message bubble where tokens will be streamed dynamically
+    // Create empty bot message bubble
     const botMsgDiv = document.createElement("div");
     botMsgDiv.className = "message bot";
     const botTextPara = document.createElement("p");
@@ -208,24 +208,29 @@ async function sendMessage() {
             return;
         }
 
-        // Initialize Reader to parse stream blocks chunk-by-chunk
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        botTextPara.innerText = ""; // Clear loader placeholder string
+        botTextPara.innerText = ""; 
 
         let accumulatedAnswer = "";
+        let streamBuffer = ""; // Robust buffer to store fragmented line packets
 
         while (true) {
             const { value, done } = await reader.read();
             if (done) break;
             
-            const chunkText = decoder.decode(value);
-            const lines = chunkText.split("\n");
+            // Append current chunk to buffer stream
+            streamBuffer += decoder.decode(value, { stream: true });
+            const lines = streamBuffer.split("\n");
+            
+            // Keep the last element (potentially partial line) in the buffer
+            streamBuffer = lines.pop();
             
             for (const line of lines) {
-                if (line.startsWith("data: ")) {
+                let cleanLine = line.trim();
+                if (cleanLine.startsWith("data: ")) {
                     try {
-                        const rawJson = line.replace("data: ", "").trim();
+                        const rawJson = cleanLine.replace("data: ", "").trim();
                         if (!rawJson) continue;
                         const dataData = JSON.parse(rawJson);
                         
@@ -247,13 +252,25 @@ async function sendMessage() {
                             chatBox.scrollTop = chatBox.scrollHeight;
                         }
                     } catch (err) {
-                        // Skip framing anomalies silently
+                        // Ignore parsing exceptions for incomplete json chunks
                     }
                 }
             }
         }
 
-        // Local state updates validation framework map mirror push
+        // Final safe fallback if buffer has leftover characters
+        if (streamBuffer.startsWith("data: ")) {
+             try {
+                 const finalJson = streamBuffer.replace("data: ", "").trim();
+                 const finalData = JSON.parse(finalJson);
+                 if (finalData.text) {
+                     accumulatedAnswer += finalData.text;
+                     botTextPara.innerText = accumulatedAnswer;
+                 }
+             } catch(e) {}
+        }
+
+        // Local state session map tracking update
         const activeSession = allSessions.find(s => s.id === currentSessionId);
         if (!activeSession) {
             allSessions.unshift({
@@ -271,9 +288,11 @@ async function sendMessage() {
         renderHistoryList();
 
     } catch (err) {
+        console.error(err);
         botTextPara.innerText = "Network pipeline error timeout.";
     }
 }
+
   
 async function deleteSessionFromServer(sessionId) {
     if (!confirm("Are you sure you want to delete this chat session?")) return;
