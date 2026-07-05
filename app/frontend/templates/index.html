@@ -49,12 +49,28 @@
             border-radius: 8px;
             font-weight: 600;
             cursor: pointer;
-            margin-bottom: 25px;
+            margin-bottom: 15px;
             transition: opacity 0.2s;
         }
 
         .new-chat-btn:hover {
             opacity: 0.9;
+        }
+
+        .logout-btn {
+            background-color: #f7768e;
+            color: #11111b;
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 25px;
+            transition: background 0.2s;
+        }
+
+        .logout-btn:hover {
+            background-color: #e06c75;
         }
 
         .history-section h3 {
@@ -202,13 +218,101 @@
         .input-wrapper button:hover {
             opacity: 0.9;
         }
+
+        /* AUTH OVERLAY BOX MODAL */
+        .auth-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #11111b;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+
+        .auth-card {
+            background-color: #1e1e2e;
+            border: 1px solid #313244;
+            padding: 35px;
+            border-radius: 12px;
+            width: 360px;
+            text-align: center;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+        }
+
+        .auth-card h3 {
+            color: #89b4fa;
+            font-size: 22px;
+            margin-bottom: 25px;
+        }
+
+        .auth-card input {
+            width: 100%;
+            background-color: #313244;
+            border: 1px solid #45475a;
+            padding: 12px;
+            border-radius: 6px;
+            color: #cdd6f4;
+            font-size: 14px;
+            margin-bottom: 12px;
+            outline: none;
+        }
+
+        .auth-card input:focus {
+            border-color: #89b4fa;
+        }
+
+        .auth-card button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 15px;
+            cursor: pointer;
+            border: none;
+            margin-top: 10px;
+        }
+
+        .primary-auth-btn {
+            background: linear-gradient(135deg, #89b4fa, #b4befe);
+            color: #11111b;
+        }
+
+        .secondary-auth-btn {
+            background-color: #313244;
+            color: #a6adc8;
+            margin-top: 5px !important;
+        }
+
+        .auth-error {
+            color: #f7768e;
+            font-size: 13px;
+            margin-top: 15px;
+            display: none;
+            word-wrap: break-word;
+        }
     </style>
 </head>
 <body>
 
+    <div id="auth-overlay" class="auth-overlay">
+        <div class="auth-card">
+            <h3 id="auth-title">🔒 WebQuery AI Account</h3>
+            <input type="email" id="auth-email" placeholder="Email Address">
+            <input type="password" id="auth-password" placeholder="Password (Min 6 chars)">
+            <button id="btn-login" class="primary-auth-btn">Login</button>
+            <button id="btn-signup" class="secondary-auth-btn">Create Account</button>
+            <p id="auth-error" class="auth-error"></p>
+        </div>
+    </div>
+
     <div class="app-container">
         <aside class="sidebar">
             <button class="new-chat-btn" onclick="createNewChat()">💬 New Chat</button>
+            <button id="btn-logout" class="logout-btn" style="display: none;">🚪 Logout</button>
             <div class="history-section">
                 <h3>📜 Recent Chats</h3>
                 <ul id="chat-history-list" class="history-list"></ul>
