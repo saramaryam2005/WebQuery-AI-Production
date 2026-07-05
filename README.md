@@ -37,6 +37,7 @@ Access the running application directly on Hugging Face Spaces:
 * Google Gemini integration
 * FastAPI REST API
 * Interactive chatbot interface built with HTML, CSS, and JavaScript
+* saved/restore Chat history in different session id and User Authentication using Supabase(PostgreSQL)
 
 ---
 
@@ -78,6 +79,9 @@ Access the running application directly on Hugging Face Spaces:
                                      │
                                      ▼
                        HTML • CSS • JavaScript UI
+                                     │
+                                     ▼
+                           Supabase (PostgreSQL)
 ```
 
 ---
@@ -93,6 +97,7 @@ Access the running application directly on Hugging Face Spaces:
 | Embeddings      | langchain             |
 | Web Scraping    | beautifulsoup4        |
 | Data Validation | Pydantic              |
+| User Authentication | Supabase          |
 
 ---
 
@@ -107,6 +112,7 @@ Access the running application directly on Hugging Face Spaces:
 7. Send the retrieved context and question to Gemini.
 8. Return the generated answer through the FastAPI API.
 9. Display the response in the chatbot interface.
+10. saved/restore Chat history in different session id and User Authentication using Supabase(PostgreSQL)
 
 ---
 
@@ -150,14 +156,4 @@ http://127.0.0.1:8000
 
 ---
 
-## Future Improvements
-
-* Support multiple websites
-* Scheduled website re-indexing
-* Response caching
-* Streaming LLM responses
-* Authentication and user sessions
-* Hybrid keyword + semantic retrieval
-
----
 
