@@ -89,7 +89,7 @@ def ask_question(question: str):
 
     # Use the active production model engine
     response = client.models.generate_content(
-        model='gemini-2.5-flash',
+        model='gemini-1.5-flash',
         contents=final_prompt,
     )
     
