@@ -12,103 +12,151 @@ window.addEventListener("DOMContentLoaded", () => {
 
     if (currentUserId) {
         // User logged in hai: Form chupao, Logout dikhao, History load karo
-        authOverlay.style.display = "none";
-        logoutBtn.style.display = "block";
+        if (authOverlay) authOverlay.style.display = "none";
+        if (logoutBtn) logoutBtn.style.display = "block";
         fetchHistoryFromServer();
     } else {
         // User logged out hai: Form dikhao, Logout chupao
-        authOverlay.style.display = "flex";
-        logoutBtn.style.display = "none";
+        if (authOverlay) authOverlay.style.display = "flex";
+        if (logoutBtn) logoutBtn.style.display = "none";
+    }
+
+    // Enter key press support for prompt box
+    const userInput = document.getElementById("user-input");
+    if (userInput) {
+        userInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
     }
 });
 
 // --- SIGNUP PROCESS TRIGGER ---
-document.getElementById("btn-signup").addEventListener("click", async () => {
-    const email = document.getElementById("auth-email").value.trim();
-    const password = document.getElementById("auth-password").value.trim();
-    const errorEl = document.getElementById("auth-error");
+const btnSignup = document.getElementById("btn-signup");
+if (btnSignup) {
+    btnSignup.addEventListener("click", async () => {
+        const emailEl = document.getElementById("auth-email");
+        const passEl = document.getElementById("auth-password");
+        const errorEl = document.getElementById("auth-error");
 
-    if (!email || !password) {
-        errorEl.innerText = "Please fill in all details.";
-        errorEl.style.display = "block";
-        return;
-    }
+        const email = emailEl ? emailEl.value.trim() : "";
+        const password = passEl ? passEl.value.trim() : "";
 
-    try {
-        const res = await fetch("/api/auth/signup", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password })
-        });
-        const data = await res.json();
-        
-        if (res.ok) {
-            alert("Account created successfully! Please click 'Login' now.");
-            errorEl.style.display = "none";
-        } else {
-            errorEl.innerText = data.detail || "Signup failed.";
-            errorEl.style.display = "block";
+        if (!email || !password) {
+            if (errorEl) {
+                errorEl.innerText = "Please fill in all details.";
+                errorEl.style.display = "block";
+            }
+            return;
         }
-    } catch (e) {
-        errorEl.innerText = "Backend communication failed.";
-        errorEl.style.display = "block";
-    }
-});
+
+        try {
+            const res = await fetch("/api/auth/signup", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password })
+            });
+
+            const data = await res.json().catch(() => ({}));
+
+            if (res.ok) {
+                alert("Account created successfully! Please click 'Login' now.");
+                if (errorEl) errorEl.style.display = "none";
+            } else {
+                if (errorEl) {
+                    errorEl.innerText = data.detail || "Signup failed. Please try again.";
+                    errorEl.style.display = "block";
+                }
+            }
+        } catch (e) {
+            console.error("Signup network error:", e);
+            if (errorEl) {
+                errorEl.innerText = "Backend communication failed.";
+                errorEl.style.display = "block";
+            }
+        }
+    });
+}
 
 // --- LOGIN PROCESS TRIGGER ---
-document.getElementById("btn-login").addEventListener("click", async () => {
-    const email = document.getElementById("auth-email").value.trim();
-    const password = document.getElementById("auth-password").value.trim();
-    const errorEl = document.getElementById("auth-error");
+const btnLogin = document.getElementById("btn-login");
+if (btnLogin) {
+    btnLogin.addEventListener("click", async () => {
+        const emailEl = document.getElementById("auth-email");
+        const passEl = document.getElementById("auth-password");
+        const errorEl = document.getElementById("auth-error");
 
-    try {
-        const res = await fetch("/api/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password })
-        });
-        const data = await res.json();
-        
-        if (res.ok) {
-            // Token aur user_id ko local storage mein save kijiye
-            localStorage.setItem("chat_user_id", data.user_id);
-            localStorage.setItem("chat_token", data.access_token);
-            
-            // Screen update kijiye
-            document.getElementById("auth-overlay").style.display = "none";
-            window.location.reload(); // Page reload karke automatic clean state initialize hogi
-        } else {
-            errorEl.innerText = data.detail || "Invalid email or password.";
-            errorEl.style.display = "block";
+        const email = emailEl ? emailEl.value.trim() : "";
+        const password = passEl ? passEl.value.trim() : "";
+
+        if (!email || !password) {
+            if (errorEl) {
+                errorEl.innerText = "Please enter email and password.";
+                errorEl.style.display = "block";
+            }
+            return;
         }
-    } catch (e) {
-        errorEl.innerText = "Authentication error.";
-        errorEl.style.display = "block";
-    }
-});
+
+        try {
+            const res = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password })
+            });
+
+            const data = await res.json().catch(() => ({}));
+
+            if (res.ok) {
+                localStorage.setItem("chat_user_id", data.user_id || email);
+                if (data.access_token) {
+                    localStorage.setItem("chat_token", data.access_token);
+                }
+
+                const authOverlay = document.getElementById("auth-overlay");
+                if (authOverlay) authOverlay.style.display = "none";
+                window.location.reload();
+            } else {
+                if (errorEl) {
+                    errorEl.innerText = data.detail || "Invalid email or password.";
+                    errorEl.style.display = "block";
+                }
+            }
+        } catch (e) {
+            console.error("Login network error:", e);
+            if (errorEl) {
+                errorEl.innerText = "Backend communication failed.";
+                errorEl.style.display = "block";
+            }
+        }
+    });
+}
 
 // --- LOGOUT PROCESS TRIGGER ---
-document.getElementById("btn-logout").addEventListener("click", () => {
-    localStorage.removeItem("chat_user_id");
-    localStorage.removeItem("chat_token");
-    window.location.reload(); // Instant clean state
-});
+const btnLogout = document.getElementById("btn-logout");
+if (btnLogout) {
+    btnLogout.addEventListener("click", () => {
+        localStorage.removeItem("chat_user_id");
+        localStorage.removeItem("chat_token");
+        window.location.reload();
+    });
+}
 
 // --- CHAT HISTORY INTEGRATION LAYER ---
 async function fetchHistoryFromServer() {
     if (!currentUserId) return;
     try {
-        // Securely pass user_id as a query parameter
-        const response = await fetch(`/api/history?user_id=${currentUserId}`);
-        let data = await response.json();
-        
+        const response = await fetch(`/api/history?user_id=${encodeURIComponent(currentUserId)}`);
+        let data = await response.json().catch(() => []);
+
         if (Array.isArray(data)) {
             allSessions = data;
         } else {
             allSessions = [];
         }
         renderHistoryList();
-        
+
         if (allSessions.length > 0) {
             loadSession(allSessions[0].id);
         } else {
@@ -121,17 +169,18 @@ async function fetchHistoryFromServer() {
 
 function renderHistoryList() {
     const listEl = document.getElementById("chat-history-list");
+    if (!listEl) return;
     listEl.innerHTML = "";
-    
+
     allSessions.forEach(session => {
         const item = document.createElement("li");
-        item.className = `history-item ${session.id === currentSessionId ? 'active' : ''}`;
+        item.className = `history-item ${session.id === currentSessionId ? "active" : ""}`;
         item.onclick = () => loadSession(session.id);
-        
+
         const titleSpan = document.createElement("span");
         titleSpan.className = "history-title";
         titleSpan.innerText = session.title || "Saved Chat Session";
-        
+
         const delBtn = document.createElement("button");
         delBtn.className = "delete-btn";
         delBtn.innerHTML = "🗑️";
@@ -139,7 +188,7 @@ function renderHistoryList() {
             e.stopPropagation();
             deleteSessionFromServer(session.id);
         };
-        
+
         item.appendChild(titleSpan);
         item.appendChild(delBtn);
         listEl.appendChild(item);
@@ -150,8 +199,9 @@ function loadSession(sessionId) {
     currentSessionId = sessionId;
     const session = allSessions.find(s => s.id === sessionId);
     const chatBox = document.getElementById("chat-box");
+    if (!chatBox) return;
     chatBox.innerHTML = "";
-    
+
     if (session && session.messages) {
         session.messages.forEach(msg => {
             appendMessage(msg.role === "user" ? "user" : "bot", msg.content, msg.sources);
@@ -162,16 +212,17 @@ function loadSession(sessionId) {
 
 function createNewChat() {
     currentSessionId = "session_" + Date.now();
-    document.getElementById("chat-box").innerHTML = `
-        <div class="message bot">
-            Hello! 👋 I'm the WebKey India smart assistant. Ask me anything about our services, products, or technologies! 🚀
-        </div>
-    `;
+    const chatBox = document.getElementById("chat-box");
+    if (chatBox) {
+        chatBox.innerHTML = `
+            <div class="message bot">
+                <p>Hello! 👋 I'm your smart assistant. Ask me anything about our services, products, or technologies! 🚀</p>
+            </div>
+        `;
+    }
     renderHistoryList();
 }
 
-// --- SECURE MESSAGE PIPELINE ---
-// --- SECURE CRASH-PROOF STREAMING PIPELINE ---
 async function sendMessage() {
     const inputEl = document.getElementById("user-input");
     const question = inputEl.value.trim();
@@ -182,7 +233,7 @@ async function sendMessage() {
     
     const chatBox = document.getElementById("chat-box");
     
-    // Create empty bot message bubble
+    // Create bot message bubble with Thinking state
     const botMsgDiv = document.createElement("div");
     botMsgDiv.className = "message bot";
     const botTextPara = document.createElement("p");
@@ -210,10 +261,10 @@ async function sendMessage() {
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        botTextPara.innerText = ""; 
 
         let accumulatedAnswer = "";
-        let streamBuffer = ""; // Robust buffer to store fragmented line packets
+        let streamBuffer = ""; 
+        let isFirstChunk = true; // Thinking text ko replace karne ke liye flag
 
         while (true) {
             const { value, done } = await reader.read();
@@ -236,6 +287,10 @@ async function sendMessage() {
                         
                         // Handle streaming words text updates
                         if (dataData.text) {
+                            if (isFirstChunk) {
+                                botTextPara.innerText = ""; // Pehla chunk aane par Thinking hatao
+                                isFirstChunk = false;
+                            }
                             accumulatedAnswer += dataData.text;
                             botTextPara.innerText = accumulatedAnswer;
                             chatBox.scrollTop = chatBox.scrollHeight;
@@ -260,17 +315,21 @@ async function sendMessage() {
 
         // Final safe fallback if buffer has leftover characters
         if (streamBuffer.startsWith("data: ")) {
-             try {
-                 const finalJson = streamBuffer.replace("data: ", "").trim();
-                 const finalData = JSON.parse(finalJson);
-                 if (finalData.text) {
-                     accumulatedAnswer += finalData.text;
-                     botTextPara.innerText = accumulatedAnswer;
-                 }
-             } catch(e) {}
+            try {
+                const finalJson = streamBuffer.replace("data: ", "").trim();
+                const finalData = JSON.parse(finalJson);
+                if (finalData.text) {
+                    if (isFirstChunk) {
+                        botTextPara.innerText = "";
+                        isFirstChunk = false;
+                    }
+                    accumulatedAnswer += finalData.text;
+                    botTextPara.innerText = accumulatedAnswer;
+                }
+            } catch(e) {}
         }
 
-        // Local state session map tracking update
+        // Update local session state
         const activeSession = allSessions.find(s => s.id === currentSessionId);
         if (!activeSession) {
             allSessions.unshift({
@@ -293,11 +352,10 @@ async function sendMessage() {
     }
 }
 
-  
 async function deleteSessionFromServer(sessionId) {
     if (!confirm("Are you sure you want to delete this chat session?")) return;
     try {
-        const res = await fetch(`/api/session/${sessionId}`, { method: "DELETE" });
+        const res = await fetch(`/api/session/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
         if (res.ok) {
             allSessions = allSessions.filter(s => s.id !== sessionId);
             if (currentSessionId === sessionId) {
@@ -314,9 +372,11 @@ async function deleteSessionFromServer(sessionId) {
 
 function appendMessage(sender, text, sources = []) {
     const chatBox = document.getElementById("chat-box");
+    if (!chatBox) return;
+
     const msgDiv = document.createElement("div");
     msgDiv.className = `message ${sender}`;
-    
+
     let contentHtml = `<p>${text}</p>`;
     if (sender === "bot" && sources && sources.length > 0) {
         contentHtml += `<div style="margin-top: 8px; font-size: 12px; color: #89b4fa; border-top: 1px solid #45475a; padding-top: 5px;">🔍 Sources: `;
@@ -325,7 +385,7 @@ function appendMessage(sender, text, sources = []) {
         });
         contentHtml += `</div>`;
     }
-    
+
     msgDiv.innerHTML = contentHtml;
     chatBox.appendChild(msgDiv);
     chatBox.scrollTop = chatBox.scrollHeight;
